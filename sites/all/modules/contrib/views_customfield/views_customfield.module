@@ -1,0 +1,22 @@
+<?php
+
+
+/**
+ * Implementation hook_views_api
+ */
+function views_customfield_views_api() {
+  return array(
+    'api' => 2,
+  );
+}
+
+function views_customfield_views_pre_execute(&$view) {
+  $d = $view->display[$view->current_display];
+  $field_handlers = $d->handler->handlers['field'];
+  foreach ($field_handlers as $h) {
+    if (is_a($h, 'views_customfield_handler_field_phpcode')) {
+      $h->pre_execute();
+    }
+  }
+}
+
