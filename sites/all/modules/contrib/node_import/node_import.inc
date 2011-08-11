@@ -1839,7 +1839,7 @@ function node_import_write_to_string($values, $file_options) {
  */
 function node_import_drupal_execute($form_id, &$form_state) {
   $args = func_get_args();
-  $form = call_user_func_array('drupal_retrieve_form', $args);
+  $form = call_user_func_array('drupal_retrieve_form', &$args);
   $form['#post'] = $form_state['values'];
   $form_state['must_validate'] = TRUE;
   drupal_prepare_form($form_id, $form, $form_state);
