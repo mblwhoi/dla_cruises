@@ -1,0 +1,9 @@
+name = DLA Cruises
+description = Customizations for the WHOI DLA Cruises sit.
+package = DLA Cruises
+core = 6.x
+php = 5.0
+
+
+
+

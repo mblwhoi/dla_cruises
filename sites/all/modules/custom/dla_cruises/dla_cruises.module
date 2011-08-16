@@ -1,0 +1,292 @@
+<?php
+
+function dla_cruises_menu(){
+
+  $items = array();
+
+  // Tab for JSON on cruise node view page.
+  $items['node/%node/json'] = array(
+    'title' => 'JSON',
+    'page callback' => "_dla_cruises_render_cruise_json",
+    'page arguments' => array(1),
+    'access callback' => "_dla_cruises_access_cruise_json",
+    'access arguments' => array(1),
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 10
+  );
+
+  return $items;
+
+  }
+
+function _dla_cruises_access_cruise_json($node){
+  if ($node->type == 'cruise'){
+    return user_access('access content');
+  }
+  else {
+    return FALSE;
+  }
+}
+
+
+/**
+ * Given a cruise node, render the cruise as R2R-format JSON.
+ */
+function _dla_cruises_render_cruise_json($cruise_node){
+
+  if (! $cruise_node){
+    drupal_set_message($message = "Could not load node '$cruise_nid'.", $type = 'error');
+    return;
+  }
+
+  // Initialize an array to represent the r2r metadata.
+  $r2r = array(
+    'id' => "", // operator's cruise ID
+    'schedule_records' => array(),
+    'name' => "",
+    'vessel_id' => "",
+    'depart_date' => "",
+    'depart_port_id' => "",
+    "arrive_date" => "",
+    "arrive_port_id" => "",
+    "persons" => array(),
+    "awards" => array(),
+    "embargoes" => "none"
+  );
+
+  // Operator cruise id.
+  $r2r['id'] = $cruise_node->field_operator_cruise_id[0]['value'];
+
+  // Schedule records.
+  foreach ($cruise_node->field_schedule_records as $schedule_record_item){
+
+    // Initialize schedule record array.
+    $schedule_record = array(
+      'scheduler_id' => "",
+      'scheduler_cruise_id' => ""
+    );
+
+    // Load schedule record node.
+    $schedule_record_node = node_load($schedule_record_item['nid']);
+
+    // Get scheduler.
+    $scheduler_node = node_load($schedule_record_node->field_scheduler[0]['nid']);
+    if ($scheduler_node){
+      $schedule_record['scheduler_id'] = $scheduler_node->field_organization_id[0]['value'];
+    }
+
+    // Cruise ID.
+    $schedule_record['scheduler_cruise_id'] = $schedule_record_node->field_scheduler_cruise_id[0]['value'];
+
+    // Save schedule record to list.
+    $r2r['schedule_records'][] = $schedule_record;
+
+  }
+
+  // Ship.
+  $rwr['vessel_id'];
+
+  // Cruise participants.
+  foreach ($cruise_node->field_participants as $participants_item){
+
+    $participant_record_node = node_load($participants_item['nid']);
+
+    $participant_record = array(
+      "id" => "",
+      "name" => "",
+      "institution_id" => "",
+      "role" => ""
+    );
+
+    // Person information.
+    $person_node = node_load($participant_record_node->field_person[0]['nid']);
+    if ($person_node){
+
+      // Person id.
+      $participant_record['id'] = $person_node->title;
+
+      // Name.
+      $participant_record['name'] = $person_node->title;
+
+      // Institution.
+      $institution_node = node_load($person_node->field_institution[0]['nid']);
+      $participant_record['institution_id'] = $institution_node->field_organization_id[0]['value'];
+    }
+
+    // Role information.
+    $role_node = node_load($participant_record_node->field_role[0]['nid']);
+    if ($role_node){
+      $participant_record['role'] = $role_node->title;
+    }
+
+    $r2r['persons'][] = $participant_record;
+  }
+
+  // Ship.
+  $ship_node = node_load($cruise_node->field_ship[0]['nid']);
+  if ($ship_node){
+    $r2r['vessel_id'] = $ship_node->field_ices_code[0]['value'];
+  }
+
+  // Depart date.
+  $r2r['depart_date'] = date_format_date(date_make_date($cruise_node->field_start_date[0]['value']), 'custom', 'Y-m-d');
+
+  // Depart port.
+  $depart_port_node = node_load($cruise_node->field_start_port[0]['nid']);
+  if ($depart_port_node){
+    $r2r['depart_port_id'] = $depart_port_node->field_port_id[0]['value'];
+  }
+
+  // Arrive date.
+  $r2r['arrive_date'] = date_format_date(date_make_date($cruise_node->field_end_date[0]['value']), 'custom', 'Y-m-d');
+
+  // Arrive port.
+  $arrive_port_node = node_load($cruise_node->field_end_port[0]['nid']);
+  if ($arrive_port_node){
+    $r2r['arrive_port_id'] = $arrive_port_node->field_port_id[0]['value'];
+  }
+
+  //Projects.
+  foreach ($cruise_node->field_projects as $projects_item){
+
+    $project_node = node_load($projects_item['nid']);
+
+    if (! $project_node){
+      continue;
+    }
+
+    $project = array(
+      "project_number" => "",
+      "name" => "",
+      "agency_id" => "",
+    );
+
+    // Project number.
+    $project['project_number'] = $project_node->field_project_number[0]['value'];
+
+    // Project name.
+    $project['name'] = $project_node->title;
+
+    // Agency information.
+    $agency_node = node_load($project_node->field_agency[0]['nid']);
+    if ($agency_node){
+      $project['agency_id'] = $agency_node->field_organization_id[0]['value'];
+    }
+
+    // Agency department.
+    $project['agency_department'] = $project_node->field_agency_department[0]['value'];
+
+    $r2r['awards'][] = $project;
+  }
+
+  // Name.  Use first project by default.
+  if ($r2r['awards'][0]['name']){
+    $r2r['name'] = $r2r['awards'][0]['name'];
+  }
+
+  // Embargo information.
+  foreach ($cruise_node->field_datasets as $dataset_item){
+    $dataset_node = node_load($dataset_item['nid']);
+    if ($dataset_node){
+      foreach ($dataset_node->field_embargoes as $embargo_item){
+        $embargo_node = node_load($embargo_item['nid']);
+        if ($embargo_node){
+          $embargo = array(
+            'title' => sprintf("%s: %s", $dataset_node->title, $embargo_node->title),
+            'start_date' => date_format_date(date_make_date($embargo_node->field_embargo_start_date[0]['value']), 'custom', 'Y-m-d'),
+            'end_date' => date_format_date(date_make_date($embargo_node->field_embargo_end_date[0]['value']), 'custom', 'Y-m-d'),
+            'notes' => $embargo_node->field_embargo_notes[0]['value']
+          );
+
+          $r2r['embargoes'] = $embargo;
+        }
+      }
+    }
+  }
+
+  $r2r_obj = array(
+    'cruise' => $r2r
+  );
+
+  drupal_json($r2r_obj);
+
+}
+
+
+
+/**
+ * Implementation of hook_nodeapi.
+ */
+function dla_cruises_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL){
+  // Do special handling for cruise nodes.
+  if ($node->type == 'cruise'){
+    switch ($op){
+
+      // If modifying node, extract chief scientists from participants.
+      case 'presave':
+        // Get nids for chief scientist, co-chief scientist roles.
+        $chief_sci_role_nids = _dla_cruises_get_chief_sci_role_nids();
+
+        // Filter out chief scientists from participants and save to chief_scientists field.
+        $node->field_chief_scientists = array();
+        $chief_scis = array();
+        foreach ($node->field_participants as $p) {
+          $participant_node = node_load($p['nid']);
+          $role_nid = $participant_node->field_role[0]['nid'];
+          if ( isset($chief_sci_role_nids[$role_nid]) ){
+            if ($participant_node->field_person[0]['nid']){
+              $node->field_chief_scientists[] = array('nid' => $participant_node->field_person[0]['nid']);
+            }
+          }
+        }
+        break;
+    }
+  }
+}
+
+
+
+/**
+ * Alter forms to hide various fields.
+ **/
+function dla_cruises_form_alter(&$form, &$form_state, $form_id){
+  if ($form_id == 'cruise_node_form'){
+
+    // hide form elements
+    $elements_to_hide = array(
+      'field_chief_scientists'
+    );
+
+    foreach ($elements_to_hide as $element){
+      $form[$element]['#prefix'] = '<span style="display:none;">';
+      $form[$element]['#suffix'] = '</span>';
+    }
+
+  }
+}
+
+
+/**
+ * Get nids for chief scientist roles.
+ */
+function _dla_cruises_get_chief_sci_role_nids(){
+
+  static $chief_sci_nids;
+
+  if (! isset($chief_sci_nids)){
+
+    $chief_sci_nids = array();
+
+    // Get nids for chief scientist, co-chief scientist roles.
+    $chief_sci_nids = array();
+    $result = db_query("SELECT n.nid FROM {node} n WHERE n.title = 'Scientist, Chief' OR n.title = 'Scientist, Co-Chief'");
+    while ($r = db_fetch_object($result)){
+      $chief_sci_nids[$r->nid] = $r->nid;
+    }
+  }
+
+  return $chief_sci_nids;
+
+}
+
+?>
